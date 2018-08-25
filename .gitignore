@@ -1,5 +1,6 @@
 /.idea
 /output
+/data
 /keys
 /ssl
 *.bat
