@@ -3,5 +3,5 @@
 /data
 /keys
 /ssl
-/test/install.go
+/test
 *.bat
