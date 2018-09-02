@@ -1,7 +1,6 @@
 package tcenter
 
 import (
-	"strings"
 	"io/ioutil"
 	"errors"
 	"encoding/json"
@@ -29,8 +28,9 @@ func (d *WSCenter) recvThread() {
 			//d.log.Debug("recv", message.Type)
 
 			if message.Type == 201 {
-				line := strings.Trim(string(data), "\n")
-				println(line)
+				//line := strings.Trim(string(data), "\n")
+				//d.log.Debug(line)
+				d.log.Debug(string(data))
 			} else if message.Type == 203 {
 				fileInfo := &fileMessage{}
 				json.Unmarshal(head, fileInfo)

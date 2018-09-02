@@ -15,6 +15,7 @@ import (
 
 
 var connectString = "173.230.150.215:25"
+var groupID = "test"
 
 func main() {
 	var targetID string
@@ -57,7 +58,7 @@ func main() {
 			os.Exit(0)
 		}
 		directory.Listen()
-		directory.GetList("test")
+		directory.GetList(groupID)
 
 		time.Sleep(time.Duration(10) * time.Second)
 		os.Exit(0)
