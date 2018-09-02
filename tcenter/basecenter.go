@@ -27,7 +27,7 @@ type fileMessage struct {
 	Filename  	string `json:"filename,omitempty"`
 }
 
-var DefaultVersion = "3.2.0823.2"
+var DefaultVersion = "6.1.0902.1"
 
 // DefaultCenter
 var DefaultCenter = &BaseCenter{}
@@ -100,25 +100,28 @@ func (d *BaseCenter) Dial(address string) (error) {
 	d.ClientUID = message.Sender
 	d.log.Debug("client id", d.ClientUID)
 
-	// Live report
-	d.liveReport()
+	// Live report thread
+	go func() {
+		d.liveReport()
+	}()
 
 	return nil
 }
 
 func (d *BaseCenter) liveReport()  {
 	// live report
-	go func() {
-		for {
-			liveMessage := &headMessage{
-				Type: 100,
-			}
-			d.SendMessage(liveMessage, nil)
+	liveMessage := &headMessage{
+		Type: 100,
+	}
 
-			time.Sleep(time.Duration(1) * time.Minute)
+	for {
+		if err := d.SendMessage(liveMessage, nil); err != nil {
+			break;
 		}
-	}()
 
+		// sleep times
+		time.Sleep(time.Duration(1) * time.Minute)
+	}
 }
 
 func (d *BaseCenter) RecvBinMessage() ([]byte, []byte, error) {
@@ -170,14 +173,6 @@ func (d *BaseCenter) RecvBinMessage() ([]byte, []byte, error) {
 			}
 			beginPos += readSize
 		}
-
-		//readSize, err = reader.Read(dataBuffer)
-		//d.log.Debug("read", readSize)
-		//if err != nil {
-		//	return nil, nil, err
-		//} else if readSize != dataSize {
-		//	return nil, nil, errors.New("error size")
-		//}
 	}
 
 	return headBuffer, dataBuffer, nil
