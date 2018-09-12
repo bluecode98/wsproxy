@@ -89,7 +89,22 @@ func (d *WSServer) Listen() error {
 		//d.log.Debug("recv message")
 
 		go func() {
-			if message.Type == 103 {
+			if message.Type == 101 {
+				version := &versionMessage{
+					Version:  DefaultVersion,
+					Id:	d.ClientID,
+					Time: time.Now().Format("2006-01-02 15:04:05"),
+				}
+				sendData, _ := json.Marshal(version)
+
+				message := &headMessage{
+					Type:	101,
+					Target: message.Sender,
+				}
+				// 提交版本信息
+				d.SendMessage(message, sendData)
+
+			} else if message.Type == 103 {
 				if string(data) == "shell" {
 					// new shell server
 					shellServer := &ShellServer{}

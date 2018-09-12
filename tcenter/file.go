@@ -9,13 +9,13 @@ import (
 	"fmt"
 )
 
-type WSClient struct {
+type WSFile struct {
 	BaseCenter
 	targetID string
 }
 
-// WSCenter
-func (d *WSClient) recvThread() {
+// WSFile
+func (d *WSFile) recvThread() {
 	go func() {
 		for {
 			head, data, err := d.RecvBinMessage()
@@ -27,7 +27,7 @@ func (d *WSClient) recvThread() {
 			err = json.Unmarshal(head, message)
 			//d.log.Debug("recv", message.Type)
 
-			if message.Type == 201 {
+			if message.Type == 106 {
 				//line := strings.Trim(string(data), "\n")
 				//d.log.Debug(line)
 				d.log.Debug(string(data))
@@ -55,14 +55,14 @@ func (d *WSClient) recvThread() {
 	}()
 }
 
-func (d *WSClient) Connect(targetID string) (error) {
+func (d *WSFile) Connect(targetID string) (error) {
 	//d.log.Debug("query target shell")
 	d.targetID = targetID
 	message := &headMessage{
 		Type:	103,
 		Target: d.targetID,
 	}
-	d.SendMessage(message, []byte("shell"))
+	d.SendMessage(message, []byte("file"))
 
 	message, data, err := d.RecvMessage()
 	if err != nil {
@@ -78,13 +78,13 @@ func (d *WSClient) Connect(targetID string) (error) {
 	d.log.Debug(string(data))
 
 	// 启动数据监听
-	d.recvThread()
+	//d.recvThread()
 
 	return nil
 }
 
 // shell 命令
-func (d *WSClient) SendShell(shell string) (error) {
+func (d *WSFile) SendShell(shell string) (error) {
 	message := &headMessage{
 		Type:	201,
 		Target: d.TargetUID,
@@ -95,7 +95,7 @@ func (d *WSClient) SendShell(shell string) (error) {
 }
 
 // 上传文件
-func (d *WSClient) SendUploadFile(localName string, remoteName string) (error) {
+func (d *WSFile) SendUploadFile(localName string, remoteName string) (error) {
 	fileData, err := ioutil.ReadFile(localName)
 	if err != nil {
 		return err
@@ -103,17 +103,38 @@ func (d *WSClient) SendUploadFile(localName string, remoteName string) (error) {
 
 	// 文件消息
 	message := &fileMessage{
-		Type:		203,
+		Type:		106,
 		Target: 	d.TargetUID,
 		Filename: 	remoteName,
 	}
 	d.sendFileMessage(message, fileData)
 
+	head, data, err := d.RecvBinMessage()
+	if err != nil {
+		return err
+	}
+
+	// 解析数据
+	answer := &answerMessage{}
+	if err := json.Unmarshal(head, message); err != nil {
+		return err
+	}
+	if err := json.Unmarshal(data, answer); err != nil {
+		return err
+	}
+
+	if message.Type != 106 {
+		return errors.New("error type")
+	}
+	if answer.Code > 0 {
+		return errors.New(answer.Message)
+	}
+
 	return nil
 }
 
 // 下载文件
-func (d *WSClient) SendDownloadFile(remoteName string) (error) {
+func (d *WSFile) SendDownloadFile(remoteName string) (error) {
 	// 文件消息
 	message := &fileMessage{
 		Type:		202,

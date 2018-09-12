@@ -27,6 +27,20 @@ type fileMessage struct {
 	Filename  	string `json:"filename,omitempty"`
 }
 
+// 版本信息数据头
+type versionMessage struct {
+	Version		string	`json:"version"`
+	Id  		string 	`json:"ID"`
+	Type  		int 	`json:"type"`
+	Time  		string 	`json:"time"`
+}
+
+// 应答信息数据头
+type answerMessage struct {
+	Code  		int 	`json:"code"`
+	Message  	string 	`json:"msg"`
+}
+
 var DefaultVersion = "6.1.0902.1"
 
 // DefaultCenter
@@ -101,27 +115,30 @@ func (d *BaseCenter) Dial(address string) (error) {
 	d.log.Debug("client id", d.ClientUID)
 
 	// Live report thread
-	go func() {
-		d.liveReport()
-	}()
+	d.liveReport()
 
 	return nil
 }
 
 func (d *BaseCenter) liveReport()  {
-	// live report
-	liveMessage := &headMessage{
-		Type: 100,
-	}
-
-	for {
-		if err := d.SendMessage(liveMessage, nil); err != nil {
-			break;
+	go func() {
+		// live report
+		liveMessage := &headMessage{
+			Type: 100,
 		}
 
-		// sleep times
-		time.Sleep(time.Duration(1) * time.Minute)
-	}
+		for {
+			println("live report", liveMessage, d.ClientUID)
+			if err := d.SendMessage(liveMessage, nil); err != nil {
+				println(err.Error())
+				break
+			}
+
+			// sleep times
+			time.Sleep(time.Duration(30) * time.Second)
+		}
+		//println("exit live report")
+	}()
 }
 
 func (d *BaseCenter) RecvBinMessage() ([]byte, []byte, error) {
@@ -198,14 +215,20 @@ func (d *BaseCenter) sendBinMessage(head []byte, data []byte) (error) {
 	bytesBuffer := bytes.NewBuffer([]byte{})
 	binary.Write(bytesBuffer, binary.LittleEndian, headSize)
 	binary.Write(bytesBuffer, binary.LittleEndian, dataSize)
-	d.Connect.Write(bytesBuffer.Bytes())
+	if _, err := d.Connect.Write(bytesBuffer.Bytes()); err != nil {
+		return err
+	}
 
 	// write head
-	d.Connect.Write(head)
+	if _, err := d.Connect.Write(head); err != nil {
+		return err
+	}
 
 	// write data
 	if dataSize > 0 {
-		d.Connect.Write(data)
+		if _, err := d.Connect.Write(data); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -227,4 +250,12 @@ func (d *BaseCenter) sendFileMessage(head *fileMessage, data []byte) (error) {
 	headJSON, _ := json.Marshal(head)
 
 	return d.sendBinMessage([]byte(headJSON), data)
+}
+
+func (d *BaseCenter) SendExit(data []byte) (error) {
+	message := &headMessage{
+		Type:	10,
+		Target: d.TargetUID,
+	}
+	return d.SendMessage(message, data)
 }

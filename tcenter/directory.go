@@ -19,29 +19,64 @@ func (d *DirectoryCenter) recvThread() (error) {
 		return err
 	}
 
-	if message.Type == 104 {
+	if message.Type == 101 {
+		targetUID := message.Sender
+		version := &versionMessage{}
+		if err := json.Unmarshal(data, version); err != nil {
+			return err
+		}
+
+		// 获取主机信息
+		serverInfo, _ := d.checkServerInfo(version.Id)
+		if len(serverInfo)==0 {
+			d.log.Debug("query", version.Id, "info")
+			queryMessage := &headMessage{
+				Type:	105,
+				Target: targetUID,
+			}
+			d.SendMessage(queryMessage, nil)
+		} else {
+			//infoDetail := fmt.Sprintf("token:\t%sname:\t%ssystem:%sversion:\t(%s)\rtime:\t%s\n", version.Id, serverInfo[0],
+			//	serverInfo[1], version.Version, version.Time)
+			//d.log.Debug(infoDetail)
+			d.log.Debug("********************************************************")
+			d.log.Debug("token:", version.Id)
+			d.log.Debug("version:", version.Version)
+			d.log.Debug("type:", version.Type)
+			d.log.Debug("local time:", version.Time)
+			d.log.Debug("name:", serverInfo[0])
+			d.log.Debug("system:", serverInfo[1])
+		}
+
+	} else if message.Type == 104 {
 		clientList := make(map[string]interface{})
 		json.Unmarshal(data, &clientList)
 		if len(clientList) == 0 {
-			d.log.Debug("not find live client.")
+			d.log.Debug("not find live client")
 		} else {
-			d.log.Debug("find live client")
-			for k, v := range clientList {
+			//d.log.Debug("find live client")
+			for k, _ := range clientList {
 				targetUID := k
-				serverId := v.(string)
-				serverInfo, _ := d.checkServerInfo(serverId)
-				if len(serverInfo)==0 {
-					// 查询主机信息
-					d.log.Debug("query", serverId, "info")
-					queryMessage := &headMessage{
-						Type:	105,
-						Target: targetUID,
-					}
-					d.SendMessage(queryMessage, nil)
-				} else {
-					infoDetail := fmt.Sprintf("%s %s %s", serverId, serverInfo[0], serverInfo[1])
-					d.log.Debug(infoDetail)
+				queryMessage := &headMessage{
+					Type:		101,
+					Target:		targetUID,
 				}
+				d.SendMessage(queryMessage, nil)
+
+				//serverId := v.(string)
+				//serverInfo, _ := d.checkServerInfo(serverId)
+				//if len(serverInfo)==0 {
+				//	// 查询主机信息
+				//	d.log.Debug("query", serverId, "info")
+				//	queryMessage := &headMessage{
+				//		Type:	105,
+				//		Target: targetUID,
+				//	}
+				//	d.SendMessage(queryMessage, nil)
+				//} else {
+				//	infoDetail := fmt.Sprintf("%s %s %s", serverId, serverInfo[0], serverInfo[1])
+				//	d.log.Debug(infoDetail)
+				//}
 			}
 		}
 	} else if message.Type == 105 {
