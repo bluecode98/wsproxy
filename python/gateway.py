@@ -1,4 +1,5 @@
 # coding=utf-8
+from threading import Event
 import threading
 import socket
 import struct
@@ -10,10 +11,11 @@ import re
 from copy import deepcopy
 import hashlib
 import sys
+import os
 import zipfile
 
 class BaseServer:
-    _version = '6.1.0902.1'
+    _version = '6.1.0903.1'
     _client_ssl_sock = None
     _live_thread = None
     _recv_thread = None
@@ -21,6 +23,7 @@ class BaseServer:
     _clientUID = ""
     _targetUID = ""
     _system_config = dict()
+    _exit_event = None
 
     def __init__(self, ws_center, ws_port, crt_file, key_file):
         self._ws_center = ws_center
@@ -60,9 +63,12 @@ class BaseServer:
     def live_report_thread(self):
         err_code = 0
         while err_code == 0:
-            time.sleep(60)
+            if self._exit_event.wait(60):
+                break
+
             live_msg = {'type': 100}
             err_code = self.send_message(live_msg)
+        # print("exit live thread " + self._clientUID)
 
     def _connect(self):
         try:
@@ -85,6 +91,8 @@ class BaseServer:
         else:
             print("login error")
             return 102
+
+        self._exit_event = Event(self._clientUID)
 
         # start live report
         self._live_thread = threading.Thread(target=self.live_report_thread, args=())
@@ -162,13 +170,18 @@ class BaseServer:
 
         return 0
 
+    def send_message_json(self, head, json_message):
+        data = json.dumps(json_message)
+
+        return self.send_message(head, data)
+
     # send version message
     def send_version_message(self, target_uid):
-        info_msg = {'type': 101, 'target': target_uid}
-        ver_msg = {'version': self._version, 'ID': self._clientID, 'type': 102,
+        message = {'type': 101, 'target': target_uid}
+        version = {'version': self._version, 'ID': self._clientID, 'type': 102,
                    'time': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))}
-        ver_str = json.dumps(ver_msg)
-        return self.send_message(info_msg, ver_str)
+
+        return self.send_message_json(message, version)
 
     def listen(self, wait_for_quit=True):
         # start recv thread
@@ -190,17 +203,21 @@ class BaseServer:
             self.send_systeminfo(target_uid)
 
         elif message['type'] == 106:
-            filename = 'update/update.zip'
-            # if not message.has_key('filename'):
-            # else:
-            #     filename = 'update\\' + message['filename']
+            # save update file
+            filename = message['filename']
+            try:
+                with open(filename, 'wb') as data_file:
+                    data_file.write(data)
 
-            with open(filename, 'wb') as data_file:
-                data_file.write(data)
+                # save status
+                answer = {'code': 0, 'msg': 'success'}
+            except:
+                # save status
+                answer = {'code': 100, 'msg': 'write '+filename+'error'}
 
-            # retruen message
+            # return message
             message = {'type': 106, 'target': target_uid}
-            self.send_message(message, "save [" + filename + "] ok")
+            self.send_message_json(message, answer)
 
         else:
             return 0
@@ -366,6 +383,11 @@ class ShellServer(BaseServer):
                 message = {'type': 201, 'target': self._targetUID}
                 self.send_message(message, "unkown type [" + message['type'] + "]")
 
+        self._exit_event.set()
+        self._client_ssl_sock.close()
+        self._shell_process.kill()
+        print("exit shell")
+
 
 class FileServer(BaseServer):
     def connect(self, target_uid):
@@ -395,23 +417,27 @@ class FileServer(BaseServer):
             else:
                 print('unkown type')
 
+        self._exit_event.set()
+        self._client_ssl_sock.close()
 
-def main():
+
+def connect(address, group_id):
     # cs = DaemonServer('97.107.137.127', 25, "./keys/client.crt", "./keys/client.key")
-    cs = DaemonServer('173.230.150.215', 25, "./keys/client.crt", "./keys/client.key")
+    # cs = DaemonServer('173.230.150.215', 25, "keys/client.crt", "keys/client.key")
+    cs = DaemonServer(ws_center=address, ws_port=25, crt_file="keys/client.crt", key_file="keys/client.key")
 
-    while True:
-        # 1.connect
-        err = cs.connect(group_id="d102")
-        if err > 0:
-            print("connect error")
-            time.sleep(60)
-            continue
+    # 1.connect
+    err = cs.connect(group_id=group_id)
+    if err > 0:
+        print("connect error")
+        # time.sleep(60)
+        return err
 
-        # 2.listen
-        cs.listen()
-        print("end")
-        time.sleep(6)
+    # 2.listen
+    cs.listen()
+    print("end")
+    # time.sleep(6)
+    return 0
 
 
 def kill_thread_fun(process):
@@ -439,16 +465,22 @@ def create_gateway(filename):
 if __name__ == '__main__':
     if len(sys.argv) > 1:
         print("child process")
-        main()
-    else:
-        print("create process", sys.argv[0])
-        while True:
-            # localtime = time.localtime(time.time())
-            # if (localtime.tm_hour > 5) and (localtime.tm_hour < 8):
-            #     create_gateway(str(sys.argv[0]))
-            # elif (localtime.tm_hour > 20) and (localtime.tm_hour < 23):
-            #     create_gateway(str(sys.argv[0]))
-            create_gateway(str(sys.argv[0]))
+        err = connect(sys.argv[1], "iron")
+        exit(err)
 
-            time.sleep(60)
-        print("end")
+    exit(-1)
+    # if len(sys.argv) > 1:
+    #     print("child process")
+    #     main()
+    # else:
+    #     print("create process", sys.argv[0])
+    #     while True:
+    #         # localtime = time.localtime(time.time())
+    #         # if (localtime.tm_hour > 5) and (localtime.tm_hour < 8):
+    #         #     create_gateway(str(sys.argv[0]))
+    #         # elif (localtime.tm_hour > 20) and (localtime.tm_hour < 23):
+    #         #     create_gateway(str(sys.argv[0]))
+    #         create_gateway(str(sys.argv[0]))
+    #
+    #         time.sleep(60)
+    #     print("end")
