@@ -1,12 +1,7 @@
 package tcenter
 
 import (
-	"net"
-	"crypto/md5"
-	"encoding/hex"
 	"os/exec"
-	"syscall"
-	"golang.org/x/sys/windows"
 	"bytes"
 	"time"
 	"io"
@@ -17,7 +12,6 @@ import (
 
 type WSServer struct {
 	BaseCenter
-	ClientID string
 }
 
 type ShellServer struct {
@@ -25,39 +19,15 @@ type ShellServer struct {
 }
 
 // WSServer
-func (d *WSServer) getLoaclMac() string {
-	interfaces, err := net.Interfaces()
-	if err != nil {
-		panic("Error : " + err.Error())
-	}
-	for _, inter := range interfaces {
-		mac := inter.HardwareAddr //获取本机MAC地址
-		if (inter.Flags & net.FlagUp) == net.FlagUp {
-			if (inter.Flags & net.FlagLoopback) != net.FlagLoopback {
-				//fmt.Printf("MAC = %s(%s)\r\n", mac, inter.Name)
-				return string(mac)
-			}
-		}
-	}
-
-	return ""
-}
-
-func (d *WSServer) getClientId() string {
-	clientId := d.getLoaclMac()
-	h := md5.New()
-	h.Write([]byte(clientId))
-	cipherStr := h.Sum(nil)
-	return hex.EncodeToString(cipherStr)
-}
 
 // get system info
 func (d *WSServer) getSystemInfo() string {
-	cmdShell := exec.Command("systeminfo.exe", "/fo", "csv")
-	cmdShell.SysProcAttr = &syscall.SysProcAttr{
-		HideWindow: true,
-		CreationFlags: windows.STARTF_USESTDHANDLES,
-	}
+	cmdShell := exec.Command("sdb", "cfg.platform.serial")
+	//cmdShell := exec.Command("systeminfo.exe", "/fo", "csv")
+	//cmdShell.SysProcAttr = &syscall.SysProcAttr{
+	//	HideWindow: true,
+	//	CreationFlags: windows.STARTF_USESTDHANDLES,
+	//}
 
 	var out bytes.Buffer
 	cmdShell.Stdout = &out
@@ -70,13 +40,16 @@ func (d *WSServer) getSystemInfo() string {
 }
 
 func (d *WSServer) Bind(groupID string)  {
-	d.ClientID = d.getClientId()
+	// get client ID
+	d.getClientId()
+
+	// bind
 	bindMessage := &headMessage{
 		Type:		102,
 		Target:		d.ClientID,
 	}
 
-	//d.log.Debug("bind", d.ClientID, "on", groupID)
+	d.log.Debug("bind", d.ClientID, "on", groupID)
 	d.SendMessage(bindMessage, []byte(groupID))
 }
 
@@ -90,19 +63,8 @@ func (d *WSServer) Listen() error {
 
 		go func() {
 			if message.Type == 101 {
-				version := &versionMessage{
-					Version:  DefaultVersion,
-					Id:	d.ClientID,
-					Time: time.Now().Format("2006-01-02 15:04:05"),
-				}
-				sendData, _ := json.Marshal(version)
-
-				message := &headMessage{
-					Type:	101,
-					Target: message.Sender,
-				}
 				// 提交版本信息
-				d.SendMessage(message, sendData)
+				d.sendVersionMessage()
 
 			} else if message.Type == 103 {
 				if string(data) == "shell" {
@@ -125,7 +87,7 @@ func (d *WSServer) Listen() error {
 						shellServer.SendMessage(message, []byte(err.Error()))
 					}
 
-					d.log.Debug("shell end")
+					//d.log.Debug("shell end")
 				}
 
 			} else if message.Type == 105 {
@@ -151,13 +113,17 @@ func (d *WSServer) Listen() error {
 
 // shell server
 func (d *ShellServer) createShell() error {
+	// get client ID
+	d.getClientId()
+
 	// create shell
 	//d.log.Debug("create shell")
-	cmdShell := exec.Command("cmd.exe")
-	cmdShell.SysProcAttr = &syscall.SysProcAttr{
-		HideWindow: true,
-		CreationFlags: windows.STARTF_USESTDHANDLES,
-	}
+	//cmdShell := exec.Command("cmd.exe")
+	//cmdShell.SysProcAttr = &syscall.SysProcAttr{
+	//	HideWindow: true,
+	//	CreationFlags: windows.STARTF_USESTDHANDLES,
+	//}
+	cmdShell := exec.Command("/bin/bash")
 
 	// get out pipe
 	ppReader, err := cmdShell.StdoutPipe()
@@ -178,12 +144,8 @@ func (d *ShellServer) createShell() error {
 		return err
 	}
 
-	// send up message
-	upMessage := &headMessage{
-		Type:	101,
-		Target: d.TargetUID,
-	}
-	d.SendMessage(upMessage, []byte(DefaultVersion))
+	// send version message
+	d.sendVersionMessage()
 
 	// pipeReader
 	go func() {

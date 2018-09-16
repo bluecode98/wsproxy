@@ -27,7 +27,9 @@ func (d *WSClient) recvThread() {
 			err = json.Unmarshal(head, message)
 			//d.log.Debug("recv", message.Type)
 
-			if message.Type == 201 {
+			if message.Type == 101 {
+				d.log.Debug(string(data))
+			} else if message.Type == 201 {
 				//line := strings.Trim(string(data), "\n")
 				//d.log.Debug(line)
 				d.log.Debug(string(data))

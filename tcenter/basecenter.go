@@ -10,6 +10,8 @@ import (
 	"time"
 	"github.com/op/go-logging"
 	"errors"
+	"crypto/md5"
+	"encoding/hex"
 )
 
 // 普通通讯数据头
@@ -57,10 +59,13 @@ type BaseCenter struct{
 	// SSL socket
 	Connect *tls.Conn
 
-	// clientUID
+	// Client ID
+	ClientID string
+
+	// client UID
 	ClientUID string
 
-	// targetUID
+	// target UID
 	TargetUID string
 
 	log *logging.Logger
@@ -128,7 +133,7 @@ func (d *BaseCenter) liveReport()  {
 		}
 
 		for {
-			println("live report", liveMessage, d.ClientUID)
+			//println("live report", liveMessage, d.ClientUID)
 			if err := d.SendMessage(liveMessage, nil); err != nil {
 				println(err.Error())
 				break
@@ -243,6 +248,14 @@ func (d *BaseCenter) SendMessage(head *headMessage, data []byte) (error) {
 	return d.sendBinMessage([]byte(headJSON), data)
 }
 
+func (d *BaseCenter) SendExit(data []byte) (error) {
+	message := &headMessage{
+		Type:	10,
+		Target: d.TargetUID,
+	}
+	return d.SendMessage(message, data)
+}
+
 func (d *BaseCenter) sendFileMessage(head *fileMessage, data []byte) (error) {
 	if head.Sender == "" {
 		head.Sender = d.ClientUID
@@ -252,10 +265,49 @@ func (d *BaseCenter) sendFileMessage(head *fileMessage, data []byte) (error) {
 	return d.sendBinMessage([]byte(headJSON), data)
 }
 
-func (d *BaseCenter) SendExit(data []byte) (error) {
+func (d *BaseCenter) sendVersionMessage() (error) {
 	message := &headMessage{
-		Type:	10,
+		Type:	101,
 		Target: d.TargetUID,
 	}
-	return d.SendMessage(message, data)
+
+	version := &versionMessage{
+		Version: DefaultVersion,
+		Id: d.ClientID,
+		Type: 103,
+		Time: time.Now().Format("2006-01-02 15:04:05"),
+	}
+
+	sendData, _ := json.Marshal(version)
+
+	return d.SendMessage(message, sendData)
 }
+
+
+func (d *BaseCenter) getLoaclMac() string {
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		panic("Error : " + err.Error())
+	}
+	for _, inter := range interfaces {
+		mac := inter.HardwareAddr //获取本机MAC地址
+		if (inter.Flags & net.FlagUp) == net.FlagUp {
+			if (inter.Flags & net.FlagLoopback) != net.FlagLoopback {
+				//fmt.Printf("MAC = %s(%s)\r\n", mac, inter.Name)
+				return string(mac)
+			}
+		}
+	}
+
+	return ""
+}
+
+func (d *BaseCenter) getClientId() string {
+	clientId := d.getLoaclMac()
+	h := md5.New()
+	h.Write([]byte(clientId))
+	cipherStr := h.Sum(nil)
+	d.ClientID = hex.EncodeToString(cipherStr)
+	return d.ClientID
+}
+
