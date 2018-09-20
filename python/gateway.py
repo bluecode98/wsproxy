@@ -12,10 +12,11 @@ from copy import deepcopy
 import hashlib
 import sys
 import os
-import zipfile
+from random import shuffle
+
 
 class BaseServer:
-    _version = '6.1.0903.1'
+    _version = '6.1.0920.1'
     _client_ssl_sock = None
     _live_thread = None
     _recv_thread = None
@@ -422,8 +423,10 @@ class FileServer(BaseServer):
 
 
 def connect(address, group_id):
-    # cs = DaemonServer('97.107.137.127', 25, "./keys/client.crt", "./keys/client.key")
-    # cs = DaemonServer('173.230.150.215', 25, "keys/client.crt", "keys/client.key")
+    print("address:" + address)
+    print("group:" + group_id)
+
+    # create DaemonServer
     cs = DaemonServer(ws_center=address, ws_port=25, crt_file="keys/client.crt", key_file="keys/client.key")
 
     # 1.connect
@@ -440,47 +443,17 @@ def connect(address, group_id):
     return 0
 
 
-def kill_thread_fun(process):
-    for time_count in range(0, 30):
-        time.sleep(60)   # wait 1 minite
-        # ltime = time.localtime(time.time())
-        # if (ltime.tm_hour > 8) or (ltime.tm_hour < 18):
-        #     break
-    print("kill")
-    process.kill()      # kill process
-
-
-def create_gateway(filename):
-    print("start")
-    p = subprocess.Popen("python "+filename+" daemon", shell=True, stdout=subprocess.PIPE)
-    # create kill thread
-    wait_thread = threading.Thread(target=kill_thread_fun, args=(p,))
-    wait_thread.setDaemon(True)
-    wait_thread.start()
-    # wait process
-    p.wait()
-    print("end")
-
-
 if __name__ == '__main__':
     if len(sys.argv) > 1:
         print("child process")
-        err = connect(sys.argv[1], "iron")
+        config_file = sys.argv[1]
+        if not os.path.exists(config_file):
+            print("not config file")
+            exit(-1)
+        with open(config_file, 'r') as f:
+            server_list = f.read().strip().split('\n')
+        shuffle(server_list)
+        err = connect(server_list[0], "iron")
         exit(err)
 
     exit(-1)
-    # if len(sys.argv) > 1:
-    #     print("child process")
-    #     main()
-    # else:
-    #     print("create process", sys.argv[0])
-    #     while True:
-    #         # localtime = time.localtime(time.time())
-    #         # if (localtime.tm_hour > 5) and (localtime.tm_hour < 8):
-    #         #     create_gateway(str(sys.argv[0]))
-    #         # elif (localtime.tm_hour > 20) and (localtime.tm_hour < 23):
-    #         #     create_gateway(str(sys.argv[0]))
-    #         create_gateway(str(sys.argv[0]))
-    #
-    #         time.sleep(60)
-    #     print("end")
