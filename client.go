@@ -15,7 +15,7 @@ import (
 
 
 var connectString = "173.230.150.215:443"
-var groupID = "d102"
+var groupID = "iron"
 
 func LinkClient(cliendID string) error  {
 	// init log config

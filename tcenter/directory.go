@@ -55,15 +55,17 @@ func (d *DirectoryCenter) recvThread() (error) {
 			d.log.Debug("not find live client")
 		} else {
 			//d.log.Debug("find live client")
-			for k, _ := range clientList {
+			for k, v := range clientList {
 				targetUID := k
+				serverId := v.(string)
+
+				d.log.Debug("query", serverId)
 				queryMessage := &headMessage{
 					Type:		101,
 					Target:		targetUID,
 				}
 				d.SendMessage(queryMessage, nil)
 
-				//serverId := v.(string)
 				//serverInfo, _ := d.checkServerInfo(serverId)
 				//if len(serverInfo)==0 {
 				//	// 查询主机信息
