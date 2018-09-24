@@ -12,18 +12,25 @@ from copy import deepcopy
 import hashlib
 import sys
 import os
+import ctypes
+import inspect
 from random import shuffle
 
 
 class BaseServer:
-    _version = '6.1.0920.1'
+    _version = '6.1.0922.1'
     _client_ssl_sock = None
     _live_thread = None
     _recv_thread = None
+
     _clientID = ""
     _clientUID = ""
     _targetUID = ""
+    _groupID = ""
+
     _system_config = dict()
+    _system_info = dict()
+
     _exit_event = None
 
     def __init__(self, ws_center, ws_port, crt_file, key_file):
@@ -31,19 +38,41 @@ class BaseServer:
         self._ws_port = ws_port
         self._crt_file = crt_file
         self._key_file = key_file
-        self.get_system_info()
-        if self._system_config.has_key("SERIAL_NUMBER"):
-            temp_id = self._system_config["SERIAL_NUMBER"]
-        else:
-            temp_id = "test"
 
-        self._clientID = hashlib.md5(temp_id.encode('utf-8')).hexdigest()
+        self.init_system_info()
+
+    def init_system_info(self):
+        # get base info
+        self.get_system_info()
+
+        # init system info message
+        if self._system_config.has_key("SERIAL_NUMBER"):
+            self._system_info['name'] = self._system_config["SERIAL_NUMBER"]
+            self._system_info['system'] = self._system_config["PRODUCT_NAME"]
+        else:
+            self._system_info['name'] = "name"
+            self._system_info['system'] = "system"
+
+        # init client ID
+        self._clientID = hashlib.md5(self._system_info['name'].encode('utf-8')).hexdigest()
+
+        # init memo
+        try:
+            with open('memo.conf', 'r') as memo_file:
+                memo_info = memo_file.read().strip()
+        except IOError:
+            self._system_info['memo'] = 'memo'
+        else:
+            if len(memo_info) > 0:
+                self._system_info['memo'] = memo_info
+            else:
+                self._system_info['memo'] = 'memo'
 
     def get_system_info(self):
-        config_file = "/etc/phoebe.conf"
+        config_filename = "/etc/phoebe.conf"
         try:
-            with open(config_file, 'r') as f:
-                linux_type_list = f.read().strip().split('\n')
+            with open(config_filename, 'r') as system_config_file:
+                linux_type_list = system_config_file.read().strip().split('\n')
         except IOError:
             pass
         else:
@@ -179,8 +208,16 @@ class BaseServer:
     # send version message
     def send_version_message(self, target_uid):
         message = {'type': 101, 'target': target_uid}
-        version = {'version': self._version, 'ID': self._clientID, 'type': 102,
-                   'time': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))}
+        version = {'version': self._version,
+                   'id': self._clientID,
+                   'uid': self._clientUID,
+                   'type': 102,
+                   'time': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())),
+                   'name': self._system_info['name'],
+                   'system': self._system_info['system'],
+                   'memo': self._system_info['memo'],
+                   'group': self._groupID,
+                   }
 
         return self.send_message_json(message, version)
 
@@ -230,8 +267,6 @@ class BaseServer:
 
 
 class DaemonServer(BaseServer):
-    _groupID = ""
-
     def send_bind_message(self, group_id):
         bind_msg = {'type': 102, 'target': self._clientID}
         return self.send_message(bind_msg, self._groupID)

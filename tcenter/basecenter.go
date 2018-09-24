@@ -17,8 +17,9 @@ import (
 // 普通通讯数据头
 type headMessage struct {
 	Type	int	   `json:"type,int"`
-	Sender  string `json:"sender,omitempty"`
-	Target  string `json:"target,omitempty"`
+	Sender  string `json:"sender"`
+	Target  string `json:"target"`
+	Remote  string `json:"remote"`
 }
 
 // 文件通讯数据头
@@ -41,6 +42,23 @@ type versionMessage struct {
 type answerMessage struct {
 	Code  		int 	`json:"code"`
 	Message  	string 	`json:"msg"`
+}
+
+// 设备信息数据
+type HostInfo struct {
+	Version		string	`json:"version"`
+	Id  		string 	`json:"id"`
+	Uid  		string 	`json:"uid"`
+	Type  		int 	`json:"type"`
+	Time  		string 	`json:"time"`
+	Name  		string 	`json:"name"`
+	System  	string 	`json:"system"`
+	Memo  		string 	`json:"memo"`
+	Group  		string 	`json:"group"`
+	IP1  		string 	`json:"ip1"`
+	IP2  		string 	`json:"ip2"`
+	Live  		bool 	`json:"live"`
+	Error  		int 	`json:"error"`
 }
 
 var DefaultVersion = "6.1.0902.1"

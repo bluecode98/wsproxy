@@ -11,10 +11,11 @@ import (
 	"strings"
 	"crypto/tls"
 	"fmt"
+	//"encoding/json"
 )
 
 
-var connectString = "173.230.150.215:443"
+var connectString = "66.175.221.141:443"
 var groupID = "iron"
 
 func LinkClient(cliendID string) error  {
@@ -108,8 +109,21 @@ func ListClient()  {
 	}
 	directory.Listen()
 	directory.GetList(groupID)
-
 	time.Sleep(time.Duration(10) * time.Second)
+
+	//hostList := make(map[string]T.HostInfo)
+	//
+	//if hostList, err = directory.GetListMap(groupID); err != nil {
+	//	println(err.Error())
+	//	os.Exit(-1)
+	//}
+	//for k, v := range hostList {
+	//	println(k, v.Id)
+	//}
+	//
+	//jsonStr, _ := json.Marshal(hostList)
+	//println("json:" + string(jsonStr))
+
 }
 
 func UpdateClient(clientID string, localFilename string)  {
