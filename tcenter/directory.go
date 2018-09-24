@@ -122,7 +122,10 @@ func (d *DirectoryCenter) checkServerInfo(serverId string) ([]string, error) {
 func (d *DirectoryCenter) Listen()  {
 	go func() {
 		for {
-			d.recvThread()
+			if err := d.recvThread();err != nil {
+				println(err.Error())
+				return 
+			}
 		}
 	}()
 }
