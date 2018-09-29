@@ -124,7 +124,7 @@ func (d *DirectoryCenter) Listen()  {
 		for {
 			if err := d.recvThread();err != nil {
 				println(err.Error())
-				return 
+				return
 			}
 		}
 	}()

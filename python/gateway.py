@@ -18,7 +18,7 @@ from random import shuffle
 
 
 class BaseServer:
-    _version = '6.1.0922.1'
+    _version = '6.1.0922.2'
     _client_ssl_sock = None
     _live_thread = None
     _recv_thread = None
@@ -39,7 +39,21 @@ class BaseServer:
         self._crt_file = crt_file
         self._key_file = key_file
 
-        self.init_system_info()
+        # self.init_system_info()
+        # self.init_system_memo()
+
+    def init_system_memo(self):
+        # init memo
+        try:
+            with open('memo.conf', 'r') as memo_file:
+                memo_info = memo_file.read().strip()
+        except IOError:
+            self._system_info['memo'] = 'memo'
+        else:
+            if len(memo_info) > 0:
+                self._system_info['memo'] = memo_info
+            else:
+                self._system_info['memo'] = 'memo'
 
     def init_system_info(self):
         # get base info
@@ -55,18 +69,6 @@ class BaseServer:
 
         # init client ID
         self._clientID = hashlib.md5(self._system_info['name'].encode('utf-8')).hexdigest()
-
-        # init memo
-        try:
-            with open('memo.conf', 'r') as memo_file:
-                memo_info = memo_file.read().strip()
-        except IOError:
-            self._system_info['memo'] = 'memo'
-        else:
-            if len(memo_info) > 0:
-                self._system_info['memo'] = memo_info
-            else:
-                self._system_info['memo'] = 'memo'
 
     def get_system_info(self):
         config_filename = "/etc/phoebe.conf"
@@ -207,7 +209,26 @@ class BaseServer:
 
     # send version message
     def send_version_message(self, target_uid):
+        # print("send version message")
         message = {'type': 101, 'target': target_uid}
+        version = {'version': self._version,
+                   'id': self._clientID,
+                   'uid': self._clientUID,
+                   'type': 102,
+                   'time': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())),
+                   # 'name': self._system_info['name'],
+                   # 'system': self._system_info['system'],
+                   # 'memo': self._system_info['memo'],
+                   # 'group': self._groupID,
+                   }
+
+        return self.send_message_json(message, version)
+
+    def send_info_message(self, target_uid):
+        self.init_system_info()
+        self.init_system_memo()
+        # print("send info message")
+        message = {'type': 105, 'target': target_uid}
         version = {'version': self._version,
                    'id': self._clientID,
                    'uid': self._clientUID,
@@ -220,6 +241,9 @@ class BaseServer:
                    }
 
         return self.send_message_json(message, version)
+        # systeminfo = self.get_system_csv()
+        # info_msg = {'type': 105, 'sender': self._clientID, 'target': target_uid}
+        # self.send_message(info_msg, systeminfo)
 
     def listen(self, wait_for_quit=True):
         # start recv thread
@@ -238,7 +262,7 @@ class BaseServer:
             self.send_version_message(target_uid)
 
         elif message['type'] == 105:
-            self.send_systeminfo(target_uid)
+            self.send_info_message(target_uid)
 
         elif message['type'] == 106:
             # save update file
@@ -297,11 +321,6 @@ class DaemonServer(BaseServer):
         # print("config0", config_str0)
         # print("config1", config_str1)
         return config_str0 + "\r\n" + config_str1
-
-    def send_systeminfo(self, target_uid):
-        systeminfo = self.get_system_csv()
-        info_msg = {'type': 105, 'sender': self._clientID, 'target': target_uid}
-        self.send_message(info_msg, systeminfo)
 
     def recv_message_thread(self):
         while True:

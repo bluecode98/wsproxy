@@ -21,9 +21,17 @@ type HostList struct{
 	GroupID    string `json:"group"`
 }
 
+type UploadFileinfo struct{
+	GroupID   	string `json:"group"`
+	TargetID	string `json:"targetid"`
+	TargetUID	string `json:"targetuid"`
+	RemoteName	string `json:"remote"`
+}
+
 var connectString = "66.175.221.141:25"
 //var connectString = "127.0.0.1:4433"
 var groupID = "iron"
+const maxSize = 5 << 20 // 5MB
 
 func GetClientFromPath(groupID string) (map[string]T.HostInfo, error) {
 	infoPath := path.Join("data", groupID)
@@ -130,7 +138,7 @@ func ListClient(address string, group string)  {
 
 
 func main() {
-	go ListClient(connectString, groupID)
+	//go ListClient(connectString, groupID)
 
 	// create web server
 	app := iris.New()
